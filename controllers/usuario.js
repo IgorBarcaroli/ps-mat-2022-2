@@ -16,6 +16,29 @@ const controller = {}       // Objeto vazio
 
 controller.create = async(req, res) => {
     try {
+
+        // O usuário precisa ter passado um campo chamado "senha"
+
+        if (!req.body.senha) return res.status(500).send({
+            message: 'Um campo "senha" deve ser fornecido'
+        }) 
+
+        // Encripta a senha aberta passada no campo "senha", gerando o campo "hash_senha"
+        req.body.hash_senha = await bcrypt.hash(req.body.senha, 12)
+
+        // Apaga o campo "senha" para não disparar validação do sequeliza
+        delete req.body.senha
+
+        // Se o usuário logado não for admin, o valor do campo
+        // admin do usuário que está sendo criado não pode ser true
+        if (req.infoLogado) {
+            if (! req.infoLogado.admin) req.body.admin = false;
+        }
+        // Se não tiver o campo infoLogado no req, significa que o acesso
+        // foi feito sem token. Nesse caso, tabmém não podemos
+        // criar um usuário admin
+        else req.body.admin = false
+
         await Usuario.create(req.body)
         // HTTP 201: Created
         res.status(201).end()
@@ -29,7 +52,21 @@ controller.create = async(req, res) => {
 
 controller.retrieve = async (req, res) => {
     try {
-        const result = await Usuario.findAll()
+
+        // Se o usuário logado não for o admin, o único registro retornado
+        // deve ser o dele mesmo
+        let result
+        if (req.infoLogado.admin) {
+            // Retorna todos os usuários cadastrados
+            result = await Usuario.scope('semSenha').findAll()
+        }
+        else {
+            // Não-admin só podem ter acesso ao próprio registro
+            result = await Usuario.scope('semSenha').findAll({
+                where: {id: req.infoLogado.id}
+            })
+        }
+
         // HTTP 200: OK (implícito)
         res.send(result)
     }
@@ -42,7 +79,14 @@ controller.retrieve = async (req, res) => {
 
 controller.retrieveOne = async (req, res) => {
     try {
-        const result = await Usuario.findByPk(req.params.id)
+
+        // Usuário não-admins só podem ter acesso ao próprio registro
+        if (! (req.infoLogado.admin) && req.infoLogado.id != req.params.id) {
+            // HTTP 403: Forbidden
+            return res.sendStatus(403).end()
+        }
+
+        const result = await Usuario.scope('semSenha').findByPk(req.params.id)
 
         if(result) {
             // HTTP 200: OK (implícito)
@@ -63,6 +107,17 @@ controller.retrieveOne = async (req, res) => {
 controller.update = async (req, res) => {
     //console.log('==============>', req.params.id)
     try {
+        // Usuário não-admins só podem ter acesso ao próprio registro
+        if (! (req.infoLogado.admin) && req.infoLogado.id != req.params.id) {
+            // HTTP 403: Forbidden
+            res.send(403).end()
+        }
+
+        if (req.body.senha) {
+            req.body.hash_senha = bcrypt.hash(req.body.senha, 12)
+            delete req.body.senha
+        }
+
         const response = await Usuario.update(
             req.body, 
             { where: { id: req.params.id } }
@@ -87,6 +142,14 @@ controller.update = async (req, res) => {
 
 controller.delete = async (req, res) => {
     try {
+
+         // Usuário não-admins só podem ter acesso ao próprio registro
+         if (! (req.infoLogado.admin) && req.infoLogado.id != req.params.id) {
+            // HTTP 403: Forbidden
+            res.send(403).end()
+        }
+
+
         const response = await Usuario.destroy(
             { where: { id: req.params.id } }
         )
@@ -110,9 +173,9 @@ controller.delete = async (req, res) => {
 
 controller.login = async (req, res) => {
     try {
-        const usuario = await Usuario.findOne({ where: { email: req.body.email }})
+        const usuario = await Usuario.findOne ({ where: { email: req.body.email }})
 
-        if(!usuario) {     // Usuário não existe
+        if (!usuario) { // Usuário não existe
             // HTTP 401: Unauthorized
             res.status(401).end()
         }
@@ -120,16 +183,22 @@ controller.login = async (req, res) => {
             let senhaOk = await bcrypt.compare(req.body.senha, usuario.hash_senha)
 
             if(senhaOk) {
-                // Gera e retorna o token
                 const token = jwt.sign(
-                    { id: usuario.id} , 
+                    {
+                        id: usuario.id,
+                        nome: usuario.nome,
+                        email: usuario.email,
+                        admin: usuario.admin,
+                        data_nasc: usuario.data_nasc
+                    },
                     process.env.TOKEN_SECRET,
-                    { expiresIn: '8h' } 
+                    { expiresIn: '8h' }
+
                 )
-                // HTTP 200: OK (implícito)
-                res.json({ auth: true, token })
+                // HTTP 200: OK (Implícito)
+                res.json({auth: true, token})
             }
-            else {  // Senha inválida
+            else { //Senha Inválida
                 // HTTP 401: Unauthorized
                 res.status(401).end()
             }
@@ -137,7 +206,7 @@ controller.login = async (req, res) => {
     }
     catch(error) {
         console.error(error)
-        // HTTP 500: Internal Server Error
+        // HTTP 500: Internal Server Errir
         res.status(500).send(error)
     }
 }
