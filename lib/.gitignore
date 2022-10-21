@@ -1,0 +1,7 @@
+node_modules/
+.env
+
+LOGIN E SENHA DO USUARIO ADMIN
+
+"email": "jojo@empresa.com",
+"senha": "abc123"

@@ -1,11 +1,28 @@
-const { DataTypes } = require('sequelize');
-const db = require('../config/db');
-
-const model = db.define('Aluno', {
+'use strict';
+const {
+  Model
+} = require('sequelize');
+module.exports = (sequelize, DataTypes) => {
+  class Aluno extends Model {
+    /**
+     * Helper method for defining associations.
+     * This method is not a part of Sequelize lifecycle.
+     * The `models/index` file will call this method automatically.
+     */
+    static associate(models) {
+      // define association here
+      this.belongsTo(models.Turma, {
+        foreignKey: 'turma_id',
+        targetKey: 'id',
+        as: 'turmas'
+      })
+    }
+  }
+  Aluno.init({
     // Model attributes are defined here
     id: {
         type: DataTypes.INTEGER,
-        // allowNull: false,
+        allowNull: false,
         primaryKey: true,
         autoIncrement: true
     },
@@ -61,13 +78,10 @@ const model = db.define('Aluno', {
         type: DataTypes.CHAR(5),
         allowNull: false
     }
-
-}, {
+  }, {
+    sequelize,
+    modelName: 'Aluno',
     tableName: 'alunos'
-});
-
-// Cria a tabela no banco de dados, caso ainda não exista
-model.sync()
-
-module.exports = model
-
+  });
+  return Aluno;
+};
